@@ -46,17 +46,22 @@ void *our_hsa_alloc(size_t size, void *param) {
 }
 
 hsa_status_t get_agent_callback(hsa_agent_t agent, void *data);
+
 hsa_status_t get_region_callback(hsa_region_t region, void *data);
 
 
 class Engine {
 public:
-
     class KernelDispatchConfig {
     public:
-        KernelDispatchConfig(): workgroup_size{0}, grid_size{0}, kernel_arg_size_(0) {}
-        KernelDispatchConfig(std::string code_file_name, std::string kernel_symbol, const std::array<int, 3>& grid_size, const std::array<int, 3>& workgroup_size, int kernel_arg_size) :
-        code_file_name(std::move(code_file_name)), kernel_symbol(std::move(kernel_symbol)), grid_size(grid_size), workgroup_size(workgroup_size), kernel_arg_size_(kernel_arg_size) {
+        KernelDispatchConfig(): workgroup_size{0}, grid_size{0}, kernel_arg_size_(0) {
+        }
+
+        KernelDispatchConfig(std::string code_file_name, std::string kernel_symbol, const std::array<int, 3> &grid_size,
+                             const std::array<int, 3> &workgroup_size,
+                             int kernel_arg_size) : code_file_name(std::move(code_file_name)),
+                                                    kernel_symbol(std::move(kernel_symbol)), grid_size(grid_size),
+                                                    workgroup_size(workgroup_size), kernel_arg_size_(kernel_arg_size) {
         }
 
         std::string code_file_name;
@@ -73,11 +78,14 @@ public:
 
 public:
     friend hsa_status_t get_agent_callback(hsa_agent_t agent, void *data);
+
     friend hsa_status_t get_region_callback(hsa_region_t region, void *data);
 
-    Engine() : agent_(0), cpu_agent_(0), queue_size_(0), queue_(nullptr), signal_(0), system_region_(0), kernarg_region_(0),
-    local_region_(0), gpu_local_region_(0), aql_(nullptr), packet_index_(0), code_object_(0), executable_(0),
-    group_static_size_(0) {}
+    Engine() : agent_(0), cpu_agent_(0), queue_size_(0), queue_(nullptr), signal_(0), system_region_(0),
+               kernarg_region_(0),
+               local_region_(0), gpu_local_region_(0), aql_(nullptr), packet_index_(0), code_object_(0), executable_(0),
+               group_static_size_(0) {
+    }
 
     ~Engine() = default;
 
@@ -98,7 +106,8 @@ public:
         status = hsa_agent_get_info(agent_, HSA_AGENT_INFO_QUEUE_MAX_SIZE, &queue_size_);
         HSA_ENFORCE("hsa_agent_get_info(HSA_AGENT_INFO_QUEUE_MAX_SIZE", status);
 
-        status = hsa_queue_create(agent_, queue_size_, HSA_QUEUE_TYPE_MULTI, nullptr, nullptr,UINT32_MAX, UINT32_MAX, &queue_);
+        status = hsa_queue_create(agent_, queue_size_, HSA_QUEUE_TYPE_MULTI, nullptr, nullptr,UINT32_MAX, UINT32_MAX,
+                                  &queue_);
 
         HSA_ENFORCE("hsa_queue_create", status);
 
@@ -163,7 +172,8 @@ public:
         HSA_ENFORCE("hsa_executable_symbol_get_info", status);
 
         uint32_t kernel_arg_size;
-        status = hsa_executable_symbol_get_info(kernel_symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_KERNARG_SEGMENT_SIZE, &kernel_arg_size);
+        status = hsa_executable_symbol_get_info(kernel_symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_KERNARG_SEGMENT_SIZE,
+                                                &kernel_arg_size);
         HSA_ENFORCE("HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_KERNARG_SEGMENT_SIZE", status);
         std::cout << "Kernel arg size: " << kernel_arg_size << std::endl;
 
@@ -184,11 +194,11 @@ public:
         return status;
     }
 
-    void* kernarg_address() {
+    void *kernarg_address() {
         return aql_->kernarg_address;
     }
 
-    void* alloc_local(int size) {
+    void *alloc_local(int size) {
         return our_hsa_alloc(size, &this->local_region_);
     }
 
@@ -199,7 +209,7 @@ public:
             return -1;
         }
         const size_t size = static_cast<std::string::size_type>(inf.tellg());
-        char *ptr = static_cast<char*>(our_hsa_alloc(size, &this->system_region_));
+        char *ptr = static_cast<char *>(our_hsa_alloc(size, &this->system_region_));
         HSA_ENFORCE_PTR("failed to allocate memory for code object", ptr);
 
         inf.seekg(0, std::ios::beg);
@@ -339,27 +349,27 @@ int kernel() {
     std::cout << "Engine init: OK" << std::endl;
 
     struct alignas(16) args_t {
-        int* input_a;
-        int* input_b;
-        int* output;
+        int *input_a;
+        int *input_b;
+        int *output;
     };
 
-    auto device_input_a = (int*) engine.alloc_local(num_elements * sizeof(int));
-    auto device_input_b = (int*) engine.alloc_local(num_elements * sizeof(int));
-    auto device_output = (int*) engine.alloc_local(num_elements * sizeof(int));
+    auto device_input_a = (int *) engine.alloc_local(num_elements * sizeof(int));
+    auto device_input_b = (int *) engine.alloc_local(num_elements * sizeof(int));
+    auto device_output = (int *) engine.alloc_local(num_elements * sizeof(int));
 
     memcpy(device_input_a, input_a.data(), num_elements * sizeof(int));
     memcpy(device_input_b, input_b.data(), num_elements * sizeof(int));
 
-    args_t args{ .input_a = device_input_a, .input_b = device_input_b, .output = device_output};
+    args_t args{.input_a = device_input_a, .input_b = device_input_b, .output = device_output};
 
     Engine::KernelDispatchConfig d_param(
         "kernel.co", // kernel compiled object name,
         "add_arrays.kd", // name of kernel
         {120, 1, 1}, // grid size
-        {1, 1, 1},  // workgroup size
+        {1, 1, 1}, // workgroup size
         sizeof(args_t)
-        );
+    );
 
     rtn = engine.setup_dispatch(&d_param);
     if (rtn) return -1;
@@ -378,7 +388,15 @@ int kernel() {
     for (int i = 0; i < num_elements; ++i) {
         sum += device_output[i];
     }
-    std::cout << "We expected the sum of 2 * sum (0..99) to be :" << (num_elements-1) * num_elements << ". Calculated sum is " << std::reduce(device_output, device_output + num_elements, 0) << std::endl;
+    // Sum of numbers 0..n is n * (n - 1) / 2
+    // In our case n = 99 - sum would be 99 * 100 / 2 = 4950
+    // Since we have two arrays each that sum up to 4950,
+    // we expect the sum of those two arrays to be = 2 * 4950 = 9900
+    std::cout << "We expected the sum of 2 * sum (0..99) to be :"
+            << (num_elements - 1) * num_elements
+            << ". Calculated sum is "
+            << std::reduce(device_output, device_output + num_elements, 0)
+            << std::endl;
     return 0;
 }
 
