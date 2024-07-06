@@ -36,8 +36,11 @@ add_custom_command(
         COMMENT "Linking kernel.o"
 )
 
+add_custom_target(hsa_kernel DEPENDS kernel.co)
+
 # Add the executable
 add_executable(hansa main.cpp kernel.co)
 target_include_directories(hansa PRIVATE /opt/rocm/include)
 target_link_directories(hansa PRIVATE /opt/rocm/lib)
 target_link_libraries(hansa PRIVATE hsa-runtime64)
+add_dependencies(hansa hsa_kernel)

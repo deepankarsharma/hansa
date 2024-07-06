@@ -10,8 +10,7 @@
 #include <memory>
 #include <random>
 #include <string>
-#include <string>
-#include <vector>
+#include <numeric>
 
 #define HSA_ENFORCE(msg, rtn) \
 if(rtn != HSA_STATUS_SUCCESS) {\
@@ -330,23 +329,35 @@ int kernel() {
         return -1;
     }
 
+    constexpr int num_elements = 10 * 10;
+    std::vector<int> input_a(num_elements);
+    std::vector<int> input_b(num_elements);
+
+    std::iota(input_a.begin(), input_a.end(), 0);
+    std::iota(input_b.begin(), input_b.end(), 0);
+
     std::cout << "Engine init: OK" << std::endl;
 
-    float host_output = 0;
     struct alignas(16) args_t {
-        float* output;
-        float x;
+        int* input_a;
+        int* input_b;
+        int* output;
     };
 
-    auto device_output = (float*) engine.alloc_local(sizeof(float));
+    auto device_input_a = (int*) engine.alloc_local(num_elements * sizeof(int));
+    auto device_input_b = (int*) engine.alloc_local(num_elements * sizeof(int));
+    auto device_output = (int*) engine.alloc_local(num_elements * sizeof(int));
 
-    args_t args{ .output = device_output, .x = 10};
+    memcpy(device_input_a, input_a.data(), num_elements * sizeof(int));
+    memcpy(device_input_b, input_b.data(), num_elements * sizeof(int));
+
+    args_t args{ .input_a = device_input_a, .input_b = device_input_b, .output = device_output};
 
     Engine::KernelDispatchConfig d_param(
         "kernel.co", // kernel compiled object name,
-        "meaning.kd", // name of kernel
-        {1, 0, 0}, // grid size
-        {1, 0, 0},  // workgroup size
+        "add_arrays.kd", // name of kernel
+        {120, 1, 1}, // grid size
+        {1, 1, 1},  // workgroup size
         sizeof(args_t)
         );
 
@@ -363,8 +374,11 @@ int kernel() {
     if (rtn) return -1;
     std::cout << "Wait: OK" << std::endl;
 
-    host_output = *device_output;
-    std::cout << "The meaning of life according to our kernel is :" << host_output << std::endl;
+    int sum = 0;
+    for (int i = 0; i < num_elements; ++i) {
+        sum += device_output[i];
+    }
+    std::cout << "We expected the sum of 2 * sum (0..99) to be :" << (num_elements-1) * num_elements << ". Calculated sum is " << std::reduce(device_output, device_output + num_elements, 0) << std::endl;
     return 0;
 }
 
