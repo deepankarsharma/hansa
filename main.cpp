@@ -424,7 +424,7 @@ int kernel() {
     // In our case n = 99 - sum would be 99 * 100 / 2 = 4950
     // Since we have two arrays each that sum up to 4950,
     // we expect the sum of those two arrays to be = 2 * 4950 = 9900
-    std::cout << "We expected the sum of 2 * sum (0..99) to be :"
+    std::cout << "We expected the sum to be :"
             << (num_elements - 1) * num_elements
             << ". Calculated sum is "
             << std::reduce(device_output, device_output + num_elements, 0)
