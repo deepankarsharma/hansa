@@ -7,10 +7,11 @@
 #include <hsa/hsa.h>
 #include <hsa/hsa_ext_amd.h>
 #include <iostream>
-#include <memory>
 #include <random>
 #include <string>
 #include <numeric>
+#define STB_IMAGE_IMPLEMENTATION
+#include "third_party/stb_image.h"
 
 #define HSA_ENFORCE(msg, rtn) \
 if(rtn != HSA_STATUS_SUCCESS) {\
@@ -49,19 +50,46 @@ hsa_status_t get_agent_callback(hsa_agent_t agent, void *data);
 
 hsa_status_t get_region_callback(hsa_region_t region, void *data);
 
+class Image {
+    explicit Image(std::string path) : path_(std::move(path)), width_(0), height_(0), data_(nullptr) {
+        data_ = stbi_load(path_.c_str(), &width_, &height_, nullptr, 0);
+        if (!data_) {
+            std::cerr << "Failed to load image: " << path_ << std::endl;
+        }
+    }
+
+    ~Image() {
+        if (data_) {
+           stbi_image_free(data_);
+        }
+    }
+
+    std::string path_;
+    int width_;
+    int height_;
+    unsigned char* data_;
+};
 
 class Engine {
 public:
     class KernelDispatchConfig {
     public:
-        KernelDispatchConfig(): workgroup_size{0}, grid_size{0}, kernel_arg_size_(0) {
+        KernelDispatchConfig(): grid_size{0}, workgroup_size{0}, kernel_arg_size_(0) {
         }
 
-        KernelDispatchConfig(std::string code_file_name, std::string kernel_symbol, const std::array<int, 3> &grid_size,
-                             const std::array<int, 3> &workgroup_size,
-                             int kernel_arg_size) : code_file_name(std::move(code_file_name)),
-                                                    kernel_symbol(std::move(kernel_symbol)), grid_size(grid_size),
-                                                    workgroup_size(workgroup_size), kernel_arg_size_(kernel_arg_size) {
+        KernelDispatchConfig(
+            std::string code_file_name,
+            std::string kernel_symbol,
+            const std::array<int, 3> &grid_size,
+            const std::array<int, 3> &workgroup_size,
+            const int kernel_arg_size
+            ) :
+        code_file_name(std::move(code_file_name)),
+        kernel_symbol(std::move(kernel_symbol)),
+        grid_size(grid_size),
+        workgroup_size(workgroup_size),
+        kernel_arg_size_(kernel_arg_size)
+        {
         }
 
         std::string code_file_name;
@@ -184,9 +212,13 @@ public:
         status = hsa_memory_allocate(kernarg_region_, cfg->size(), &kernarg);
         HSA_ENFORCE("hsa_memory_allocate", status);
         aql_->kernarg_address = kernarg;
+
+        std::cout << "Workgroup sizes: " << cfg->workgroup_size[0] << " " << cfg->workgroup_size[1] << " " << cfg->workgroup_size[2] << std::endl;
         aql_->workgroup_size_x = cfg->workgroup_size[0];
         aql_->workgroup_size_y = cfg->workgroup_size[1];
         aql_->workgroup_size_z = cfg->workgroup_size[2];
+
+        std::cout << "Grid sizes: " << cfg->grid_size[0] << " " << cfg->grid_size[1] << " " << cfg->grid_size[2] << std::endl;
 
         aql_->grid_size_x = cfg->grid_size[0];
         aql_->grid_size_y = cfg->grid_size[1];
@@ -241,14 +273,14 @@ public:
         const uint32_t header32 = header | (setup << 16);
 
         __atomic_store_n(reinterpret_cast<uint32_t *>(aql_), header32, __ATOMIC_RELEASE);
-
         hsa_signal_store_relaxed(queue_->doorbell_signal, static_cast<hsa_signal_value_t>(packet_index_));
 
         return 0;
     }
 
     hsa_signal_value_t wait() {
-        return hsa_signal_wait_acquire(signal_, HSA_SIGNAL_CONDITION_EQ, 0, ~0ULL, HSA_WAIT_STATE_ACTIVE);
+        //return hsa_signal_wait_acquire(signal_, HSA_SIGNAL_CONDITION_EQ, 0, ~0ULL, HSA_WAIT_STATE_ACTIVE);
+        return hsa_signal_wait_acquire(signal_, HSA_SIGNAL_CONDITION_LT, 1, UINT64_MAX, HSA_WAIT_STATE_BLOCKED);
     }
 
 private:
@@ -339,7 +371,7 @@ int kernel() {
         return -1;
     }
 
-    constexpr int num_elements = 10 * 10;
+    constexpr int num_elements = 100000;
     std::vector<int> input_a(num_elements);
     std::vector<int> input_b(num_elements);
 
@@ -364,10 +396,10 @@ int kernel() {
     args_t args{.input_a = device_input_a, .input_b = device_input_b, .output = device_output};
 
     Engine::KernelDispatchConfig d_param(
-        "kernel.co", // kernel compiled object name,
+        "libkernels.so", // kernel compiled object name,
         "add_arrays.kd", // name of kernel
-        {120, 1, 1}, // grid size
-        {1, 1, 1}, // workgroup size
+        {num_elements, 1, 1}, // grid size
+        {64, 1, 1}, // workgroup size
         sizeof(args_t)
     );
 
@@ -397,6 +429,11 @@ int kernel() {
             << ". Calculated sum is "
             << std::reduce(device_output, device_output + num_elements, 0)
             << std::endl;
+    std::vector<int> debug(num_elements);
+    // copy from device_output to debug
+    for (int i = 0; i < 40; ++i) {
+        std::cout << "[" << i << "] = " << device_output[i] << std::endl;
+    }
     return 0;
 }
 
