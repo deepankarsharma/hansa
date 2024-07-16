@@ -429,11 +429,6 @@ int kernel() {
             << ". Calculated sum is "
             << std::reduce(device_output, device_output + num_elements, 0)
             << std::endl;
-    std::vector<int> debug(num_elements);
-    // copy from device_output to debug
-    for (int i = 0; i < 40; ++i) {
-        std::cout << "[" << i << "] = " << device_output[i] << std::endl;
-    }
     return 0;
 }
 

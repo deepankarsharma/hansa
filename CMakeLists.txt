@@ -7,7 +7,7 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-set(GPU_ARCH "gfx1100")
+set(GPU_ARCH "gfx1103")
 
 # TODO: Detect architecture like gfx1103 rather than hardcoding it
 
@@ -26,12 +26,12 @@ message(STATUS "Kernel source files: ${KERNEL_SOURCES}")
 
 set_source_files_properties(
     ${KERNEL_SOURCES}
-    PROPERTIES COMPILE_FLAGS "-fvisibility=default -target amdgcn-amd-amdhsa -mcpu=${GPU_ARCH} -O3"
+    PROPERTIES COMPILE_FLAGS "-nogpulib -fvisibility=default -target amdgcn-amd-amdhsa -mcpu=${GPU_ARCH} -O3"
 )
 
 add_library(kernels MODULE ${KERNEL_SOURCES})
 set_target_properties(kernels PROPERTIES
-    LINK_FLAGS "-fvisibility=default -target amdgcn-amd-amdhsa -mcpu=${GPU_ARCH} -O3"
+    LINK_FLAGS "-nogpulib -fvisibility=default -target amdgcn-amd-amdhsa -mcpu=${GPU_ARCH} -O3"
 )
 
 # Generate assembly files for kernel sources
@@ -39,7 +39,7 @@ foreach(kernel_source ${KERNEL_SOURCES})
     get_filename_component(kernel_name ${kernel_source} NAME_WE)
     add_custom_command(
             OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${kernel_name}.s
-            COMMAND ${CLANG_EXECUTABLE} -S -emit-llvm -fvisibility=default -target amdgcn-amd-amdhsa -mcpu=${GPU_ARCH} -O0
+            COMMAND ${CLANG_EXECUTABLE} -S -nogpulib -emit-llvm -fvisibility=default -target amdgcn-amd-amdhsa -mcpu=${GPU_ARCH} -O0
             -o ${CMAKE_CURRENT_BINARY_DIR}/${kernel_name}.s ${kernel_source}
             DEPENDS ${kernel_source}
             COMMENT "Generating assembly for ${kernel_name}"
