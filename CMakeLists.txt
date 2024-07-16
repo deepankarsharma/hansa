@@ -7,11 +7,11 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-set(GPU_ARCH "gfx1103")
+set(GPU_ARCH "gfx1100")
 
 # TODO: Detect architecture like gfx1103 rather than hardcoding it
 
-find_program(CLANG_EXECUTABLE NAMES clang)
+find_program(CLANG_EXECUTABLE NAMES clang-17)
 
 if(NOT CLANG_EXECUTABLE)
     message(FATAL_ERROR "Clang not found. Please install Clang or set the CLANG_EXECUTABLE variable.")
@@ -22,6 +22,7 @@ file(GLOB KERNEL_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/kernels/*.c")
 
 # Print the found files (optional, for debugging)
 message(STATUS "Kernel source files: ${KERNEL_SOURCES}")
+
 
 set_source_files_properties(
     ${KERNEL_SOURCES}
