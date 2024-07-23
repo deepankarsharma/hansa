@@ -11,7 +11,7 @@ set(GPU_ARCH "gfx1103")
 
 # TODO: Detect architecture like gfx1103 rather than hardcoding it
 
-find_program(CLANG_EXECUTABLE NAMES clang-17)
+find_program(CLANG_EXECUTABLE NAMES clang)
 
 if(NOT CLANG_EXECUTABLE)
     message(FATAL_ERROR "Clang not found. Please install Clang or set the CLANG_EXECUTABLE variable.")

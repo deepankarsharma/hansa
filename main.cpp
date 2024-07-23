@@ -29,6 +29,44 @@ return -1; \
 
 class Engine;
 
+#pragma pack(push, 1)
+typedef struct ImplicitArg_s {
+    uint32_t block_count_x;
+    uint32_t block_count_y;
+    uint32_t block_count_z;
+    
+    uint16_t group_size_x;
+    uint16_t group_size_y;
+    uint16_t group_size_z;
+    
+    uint16_t remainder_x;
+    uint16_t remainder_y;
+    uint16_t remainder_z;
+    
+    uint64_t tool_correlation_id;
+    uint64_t reserved_1;
+    
+    uint64_t global_offset_x;
+    uint64_t global_offset_y;
+    uint64_t global_offset_z;
+    
+    uint16_t grid_dims;
+    
+    uint16_t reserved_2;
+    uint16_t reserved_3;
+    uint16_t reserved_4;
+
+    uint64_t printf_buffer;
+    uint64_t hostcall_buffer;
+    uint64_t multigrid_sync_arg;
+    uint64_t heap_v1;
+    uint64_t default_queue;
+    uint64_t completion_action;
+    uint32_t dynamic_lds_size;
+    uint32_t private_base;
+    uint32_t shared_base;
+} ImplicitArg;
+#pragma pack(pop)
 
 void our_hsa_free(void *mem) {
     if (mem)
@@ -149,7 +187,8 @@ public:
         return 0;
     }
 
-    int setup_dispatch(const KernelDispatchConfig *cfg) {
+    template <typename ARGS_T>
+    int setup_dispatch(const KernelDispatchConfig *cfg, const ARGS_T& args) {
         packet_index_ = hsa_queue_add_write_index_relaxed(queue_, 1);
         const uint32_t queue_mask = queue_->size - 1;
         aql_ = static_cast<hsa_kernel_dispatch_packet_t *>(queue_->base_address) + (packet_index_ & queue_mask);
@@ -209,8 +248,25 @@ public:
 
         // kernel args
         void *kernarg;
-        status = hsa_memory_allocate(kernarg_region_, cfg->size(), &kernarg);
+        status = hsa_memory_allocate(kernarg_region_, kernel_arg_size, &kernarg);
         HSA_ENFORCE("hsa_memory_allocate", status);
+
+        std::memset(kernarg, 0, kernel_arg_size);
+        std::memcpy(kernarg, &args, sizeof(ARGS_T));
+        
+        bool dims = 1 + (cfg->grid_size[1] * cfg->workgroup_size[1] != 1) + (cfg->grid_size[2] * cfg->workgroup_size[2] != 1);
+        auto implicit_args = reinterpret_cast<ImplicitArg*>(reinterpret_cast<std::uint8_t*>(kernarg) + sizeof(ARGS_T));
+        
+        implicit_args->block_count_x = cfg->grid_size[0];
+        implicit_args->block_count_y = cfg->grid_size[1];
+        implicit_args->block_count_z = cfg->grid_size[2];
+
+        implicit_args->group_size_x = cfg->workgroup_size[0];
+        implicit_args->group_size_y = cfg->workgroup_size[1];
+        implicit_args->group_size_z = cfg->workgroup_size[2];
+
+        implicit_args->grid_dims = dims;
+
         aql_->kernarg_address = kernarg;
 
         std::cout << "Workgroup sizes: " << cfg->workgroup_size[0] << " " << cfg->workgroup_size[1] << " " << cfg->workgroup_size[2] << std::endl;
@@ -380,7 +436,7 @@ int kernel() {
 
     std::cout << "Engine init: OK" << std::endl;
 
-    struct alignas(16) args_t {
+    struct args_t {
         int *input_a;
         int *input_b;
         int *output;
@@ -403,11 +459,9 @@ int kernel() {
         sizeof(args_t)
     );
 
-    rtn = engine.setup_dispatch(&d_param);
+    rtn = engine.setup_dispatch(&d_param, args);
     if (rtn) return -1;
     std::cout << "Setup dispatch: OK" << std::endl;
-
-    memcpy(engine.kernarg_address(), &args, sizeof(args));
 
     engine.dispatch();
     std::cout << "Dispatch: OK" << std::endl;
