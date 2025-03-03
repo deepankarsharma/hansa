@@ -7,7 +7,10 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-set(GPU_ARCH "gfx1103")
+set(GPU_ARCH "gfx1150")
+
+# add_compile_options("-###")
+add_compile_options("-v")
 
 # TODO: Detect architecture like gfx1103 rather than hardcoding it
 
