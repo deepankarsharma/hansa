@@ -4,9 +4,11 @@
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <numeric>
 #include <random>
@@ -623,8 +625,178 @@ kernel_002_color_to_grayscale() {
 }
 
 int
+kernel_003_image_blur_rgb() {
+  int width, height, channels;
+
+  unsigned char *host_img =
+      stbi_load("../data/images/teapot.jpg", &width, &height, &channels, 0);
+
+  if (!host_img) {
+    std::cout << "Failed to load image teapot.jpg" << std::endl;
+    return -1;
+  }
+
+  if (channels < 3) {
+    std::cout << "Image does not have enough channels (expected at least 3)"
+              << std::endl;
+    stbi_image_free(host_img);
+    return -1;
+  }
+
+  std::cout << "Loaded image teapot.jpg: " << width << " x " << height
+            << ", channels: " << channels << std::endl;
+
+  std::vector<unsigned char> host_out(width * height * 3);
+
+  Engine engine;
+  long rtn = engine.init();
+
+  if (rtn) {
+    std::cout << "Failed to initialize engine" << std::endl;
+    stbi_image_free(host_img);
+    return -1;
+  }
+  std::cout << "Engine init: OK" << std::endl;
+
+  auto device_input = (unsigned char *)engine.alloc_local(
+      width * height * 3 * sizeof(unsigned char));
+  auto device_output = (unsigned char *)engine.alloc_local(
+      width * height * 3 * sizeof(unsigned char));
+
+  memcpy(device_input, host_img, width * height * 3 * sizeof(unsigned char));
+
+  stbi_image_free(host_img);
+
+  struct args_t {
+    unsigned char *img_out;
+    unsigned char *img_in;
+
+    int width;
+    int height;
+  };
+
+  args_t args{.img_out = device_output,
+              .img_in = device_input,
+              .width = width,
+              .height = height};
+
+  int num_pixels = width * height;
+
+  Engine::KernelDispatchConfig d_param(
+      "libkernels.so", "image_blur_rgb.kd",
+      {width, height, 1},  // Grid size:  Match image dimensions.
+      {16, 16, 1},         // Workgroup size: Example 16x16.
+      sizeof(args_t));
+
+  rtn = engine.setup_dispatch(&d_param, args);
+  if (rtn) return -1;
+  std::cout << "Setup dispatch: OK" << std::endl;
+
+  engine.dispatch();
+
+  std::cout << "Dispatch: OK" << std::endl;
+
+  rtn = engine.wait();
+  if (rtn) return -1;
+  std::cout << "Wait: OK" << std::endl;
+
+  memcpy(host_out.data(), device_output,
+         width * height * 3 * sizeof(unsigned char));
+
+  if (stbi_write_png("teapot_blurred.png", width, height, 3, host_out.data(),
+                     width * 3)) {
+    std::cout << "Blurred image saved as teapot_blurred.png" << std::endl;
+  } else {
+    std::cout << "Failed to save blurred image" << std::endl;
+  }
+
+  return 0;
+}
+
+void
+print_matrix(const std::vector<int> &matrix, int rows, int cols) {
+  for (int i = 0; i < rows; ++i) {
+    for (int j = 0; j < cols; ++j) {
+      std::cout << std::setw(5) << matrix[i * cols + j] << " ";
+    }
+    std::cout << std::endl;
+  }
+}
+
+int
+kernel_004_matrix_multiply_naive() {
+  constexpr int N = 8;
+  constexpr int M = 8;
+  constexpr int K = 8;
+
+  std::vector<int> host_a(N * M);
+  std::vector<int> host_b(M * K);
+  std::vector<int> host_c(N * K);
+
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<int> dist(
+      1, 10);  // Generate integers between 1 and 10
+
+  for (int i = 0; i < N * M; ++i) host_a[i] = dist(gen);
+  for (int i = 0; i < M * K; ++i) host_b[i] = dist(gen);
+
+  Engine engine;
+  long rtn = engine.init();
+  if (rtn) {
+    return -1;
+  }
+
+  auto device_a = (int *)engine.alloc_local(N * M * sizeof(int));
+  auto device_b = (int *)engine.alloc_local(M * K * sizeof(int));
+  auto device_c = (int *)engine.alloc_local(N * K * sizeof(int));
+
+  memcpy(device_a, host_a.data(), N * M * sizeof(int));
+  memcpy(device_b, host_b.data(), M * K * sizeof(int));
+
+  struct args_t {
+    int *c;
+    int *a;
+    int *b;
+    int n;
+    int m;
+    int k;
+  };
+
+  args_t args{
+      .c = device_c, .a = device_a, .b = device_b, .n = N, .m = M, .k = K};
+
+  Engine::KernelDispatchConfig d_param(
+      "libkernels.so", "matrix_multiply_naive.kd",
+      {(uint32_t)K, (uint32_t)N, 1}, {64, 1, 1}, sizeof(args_t));
+
+  rtn = engine.setup_dispatch(&d_param, args);
+  if (rtn) return -1;
+
+  std::cout << "Matrix A:" << std::endl;
+  print_matrix(host_a, N, M);
+  std::cout << "Matrix B:" << std::endl;
+  print_matrix(host_b, M, K);
+
+  engine.dispatch();
+
+  rtn = engine.wait();
+  if (rtn) return -1;
+
+  memcpy(host_c.data(), device_c, N * K * sizeof(int));
+
+  std::cout << "Matrix C (Result):" << std::endl;
+
+  print_matrix(host_c, N, K);
+
+  return 0;
+}
+
+int
 main(int argc, char **argv) {
   kernel_001_vector_add();
   kernel_002_color_to_grayscale();
+  kernel_003_image_blur_rgb();
+  kernel_004_matrix_multiply_naive();
   return 0;
 }
