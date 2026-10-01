@@ -22,9 +22,14 @@ matrix_multiply_tiled2(float* C, const float* A, const float* B, int N, int M,
   for (int tile = 0; tile < (M + TILE_SIZE - 1) / TILE_SIZE; tile++) {
     // Load tile elements into shared memory (manually managed)
 
-    // static needed so that this is not allocated per thread
-    static __attribute__((address_space(3))) float tile_A[TILE_SIZE][TILE_SIZE];
-    static __attribute__((address_space(3))) float tile_B[TILE_SIZE][TILE_SIZE];
+    // static needed so that this is not allocated per thread.
+    // loader_uninitialized needed because LDS can't be zero-initialized.
+    static __attribute__((
+        address_space(3),
+        loader_uninitialized)) float tile_A[TILE_SIZE][TILE_SIZE];
+    static __attribute__((
+        address_space(3),
+        loader_uninitialized)) float tile_B[TILE_SIZE][TILE_SIZE];
 
     int tiled_row = row;
     int tiled_col = col;
